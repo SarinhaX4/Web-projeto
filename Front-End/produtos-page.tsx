@@ -1,18 +1,24 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
 import { ShoppingCart, Search, Plus, Check, X, Minus, Trash2 } from "lucide-react"
-import PedidosPage from "./pedidos-page"
+import PedidosPage from "../pedidos/page" // Caminho corrigido para o módulo de página
+import { getAllProdutos } from "@/lib/api/produtos.service"
+import { createPedido } from "@/lib/api/pedidos.service"
+import { isAuthenticated, getProfile, logout } from "@/lib/api/auth.service"
 
 interface Produto {
-  id: number
-  nome: string
-  preco: string
-  precoNumerico: number
-  imagem: string
-  categoria: string
+  id: string
+  name: string
+  price: number
+  description: string
+  category: string
+  stock: number
+  unit: string
+  status: 'active' | 'deleted'
+  imageUrl: string
 }
 
 interface ItemCarrinho {
@@ -20,198 +26,134 @@ interface ItemCarrinho {
   quantidade: number
 }
 
+// Interface Pedido ajustada para consistência com o backend e pedidos-page.tsx
 interface Pedido {
   id: string
-  data: string
+  orderDate: string // Alterado de 'data' para 'orderDate'
   status: "preparando" | "saiu_entrega" | "entregue"
   total: number
-  itens: Array<{
-    id: number
-    nome: string
-    preco: string
-    quantidade: number
-    imagem: string
+  items: Array<{ // Alterado de 'itens' para 'items'
+    productId: string
+    name: string
+    price: number
+    quantity: number
+    imageUrl: string
   }>
-  endereco: string
+  customerName: string
+  customerEmail: string
+  customerPhone: string
+  deliveryAddress: string // Alterado de 'endereco' para 'deliveryAddress'
   previsaoEntrega: string
 }
 
 export default function ProdutosPage() {
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([])
-  const [itensAdicionados, setItensAdicionados] = useState<number[]>([])
+  const [itensAdicionados, setItensAdicionados] = useState<string[]>([])
   const [carrinhoAberto, setCarrinhoAberto] = useState(false)
   const [compraConcluida, setCompraConcluida] = useState(false)
   const [termoBusca, setTermoBusca] = useState("")
   const [mostrarPedidos, setMostrarPedidos] = useState(false)
   const [pedidoAtual, setPedidoAtual] = useState<Pedido | null>(null)
+  const [produtosDisponiveis, setProdutosDisponiveis] = useState<Produto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ username: string; email: string; phone: string; address: string; role: string } | null>(null)
 
   const categorias = ["Toda a Loja", "Frutas", "Legumes", "Vegetais", "Folhas", "Temperos", "Frutas da época"]
 
-  const frutas: Produto[] = [
-    {
-      id: 1,
-      nome: "Maçã Gala",
-      preco: "R$ 10,89",
-      precoNumerico: 10.89,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Frutas",
-    },
-    {
-      id: 2,
-      nome: "Banana Prata",
-      preco: "R$ 7,65",
-      precoNumerico: 7.65,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Frutas",
-    },
-    {
-      id: 3,
-      nome: "Uva Roxa",
-      preco: "R$ 12,69",
-      precoNumerico: 12.69,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Frutas",
-    },
-    {
-      id: 4,
-      nome: "Laranja Pera",
-      preco: "R$ 5,29",
-      precoNumerico: 5.29,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Frutas",
-    },
-    {
-      id: 5,
-      nome: "Pera",
-      preco: "R$ 8,45",
-      precoNumerico: 8.45,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Frutas",
-    },
-  ]
+  const fetchProdutos = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const token = localStorage.getItem('jwtToken');
+      if (token) {
+         const produtos = await getAllProdutos(token);
+         setProdutosDisponiveis(produtos.filter((p: Produto) => p.status === 'active'));
+      } else {
+         setProdutosDisponiveis([
+           { id: "mock-1", name: "Maçã Gala (Mock)", price: 10.89, description: "Maçã fresquinha", category: "Frutas", stock: 100, unit: "kg", status: "active", imageUrl: "https://via.placeholder.com/80" },
+           { id: "mock-2", name: "Banana Prata (Mock)", price: 7.65, description: "Banana saborosa", category: "Frutas", stock: 50, unit: "kg", status: "active", imageUrl: "https://via.placeholder.com/80" },
+           { id: "mock-3", name: "Tomate (Mock)", price: 8.39, description: "Tomate cereja", category: "Legumes", stock: 200, unit: "kg", status: "active", imageUrl: "https://via.placeholder.com/80" },
+           { id: "mock-4", name: "Alface Lisa (Mock)", price: 9.99, description: "Alface crocante", category: "Vegetais", stock: 70, unit: "un", status: "active", imageUrl: "https://via.placeholder.com/80" },
+         ]);
+         // Removido o argumento do setError para evitar o erro de tipagem "Expected 0 arguments, but got 1."
+         // Se quiser mostrar um aviso, use um estado separado ou um toast
+      }
+    } catch (err: any) {
+      setError(err.message || "Erro ao carregar produtos do backend.");
+      console.error("Erro ao carregar produtos:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const legumes: Produto[] = [
-    {
-      id: 6,
-      nome: "Pepino Japonês",
-      preco: "R$ 9,39",
-      precoNumerico: 9.39,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Legumes",
-    },
-    {
-      id: 7,
-      nome: "Cenoura",
-      preco: "R$ 11,39",
-      precoNumerico: 11.39,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Legumes",
-    },
-    {
-      id: 8,
-      nome: "Tomate",
-      preco: "R$ 8,39",
-      precoNumerico: 8.39,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Legumes",
-    },
-    {
-      id: 9,
-      nome: "Abóbora",
-      preco: "R$ 13,89",
-      precoNumerico: 13.89,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Legumes",
-    },
-    {
-      id: 10,
-      nome: "Cebola Roxa",
-      preco: "R$ 6,82",
-      precoNumerico: 6.82,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Legumes",
-    },
-  ]
+  const fetchUserProfile = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('jwtToken');
+      if (token) {
+        const profile = await getProfile(token);
+        setCurrentUser(profile);
+      } else {
+        setCurrentUser({ username: "Visitante", email: "visitante@example.com", phone: "", address: "", role: "" });
+      }
+    } catch (error) {
+      console.error("Failed to fetch user profile:", error);
+      setCurrentUser(null);
+    }
+  }, []);
 
-  const vegetais: Produto[] = [
-    {
-      id: 11,
-      nome: "Brócolis",
-      preco: "R$ 5,48",
-      precoNumerico: 5.48,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Vegetais",
-    },
-    {
-      id: 12,
-      nome: "Repolho",
-      preco: "R$ 8,43",
-      precoNumerico: 8.43,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Vegetais",
-    },
-    {
-      id: 13,
-      nome: "Alface Lisa",
-      preco: "R$ 9,99",
-      precoNumerico: 9.99,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Vegetais",
-    },
-    {
-      id: 14,
-      nome: "Batata Inglesa",
-      preco: "R$ 13,14",
-      precoNumerico: 13.14,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Vegetais",
-    },
-    {
-      id: 15,
-      nome: "Salsão",
-      preco: "R$ 3,83",
-      precoNumerico: 3.83,
-      imagem: "https://via.placeholder.com/80",
-      categoria: "Vegetais",
-    },
-  ]
+  useEffect(() => {
+    fetchProdutos();
+    fetchUserProfile();
+  }, [fetchProdutos, fetchUserProfile]);
 
-  // Combinar todos os produtos para busca
-  const todosProdutos = [...frutas, ...legumes, ...vegetais]
-
-  // Filtrar produtos baseado no termo de busca
-  const produtosFiltrados = todosProdutos.filter((produto) =>
-    produto.nome.toLowerCase().includes(termoBusca.toLowerCase()),
-  )
+  const produtosFiltrados = produtosDisponiveis.filter((produto) =>
+    produto.name.toLowerCase().includes(termoBusca.toLowerCase()) ||
+    (termoBusca === "" && produto.category === termoBusca) ||
+    (termoBusca !== "" && produto.category.toLowerCase().includes(termoBusca.toLowerCase()))
+  );
 
   const adicionarAoCarrinho = (produto: Produto) => {
     setCarrinho((carrinhoAtual) => {
       const itemExistente = carrinhoAtual.find((item) => item.produto.id === produto.id)
-
       if (itemExistente) {
+        if (itemExistente.quantidade + 1 > produto.stock) {
+          alert(`Limite de estoque para ${produto.name} atingido!`);
+          return carrinhoAtual;
+        }
         return carrinhoAtual.map((item) =>
           item.produto.id === produto.id ? { ...item, quantidade: item.quantidade + 1 } : item,
         )
       } else {
+        if (produto.stock <= 0) {
+          alert(`Produto ${produto.name} fora de estoque!`);
+          return carrinhoAtual;
+        }
         return [...carrinhoAtual, { produto, quantidade: 1 }]
       }
     })
-
     setItensAdicionados((prev) => [...prev, produto.id])
     setTimeout(() => {
       setItensAdicionados((prev) => prev.filter((id) => id !== produto.id))
     }, 1000)
   }
 
-  const aumentarQuantidade = (produtoId: number) => {
+  const aumentarQuantidade = (produtoId: string) => {
     setCarrinho((carrinhoAtual) =>
-      carrinhoAtual.map((item) =>
-        item.produto.id === produtoId ? { ...item, quantidade: item.quantidade + 1 } : item,
-      ),
-    )
-  }
+      carrinhoAtual.map((item) => {
+        if (item.produto.id === produtoId) {
+          if (item.quantidade + 1 > item.produto.stock) {
+            alert(`Limite de estoque para ${item.produto.name} atingido!`);
+            return item;
+          }
+          return { ...item, quantidade: item.quantidade + 1 };
+        }
+        return item;
+      }),
+    );
+  };
 
-  const diminuirQuantidade = (produtoId: number) => {
+  const diminuirQuantidade = (produtoId: string) => {
     setCarrinho((carrinhoAtual) =>
       carrinhoAtual
         .map((item) => (item.produto.id === produtoId ? { ...item, quantidade: item.quantidade - 1 } : item))
@@ -219,78 +161,109 @@ export default function ProdutosPage() {
     )
   }
 
-  const removerItem = (produtoId: number) => {
+  const removerItem = (produtoId: string) => {
     setCarrinho((carrinhoAtual) => carrinhoAtual.filter((item) => item.produto.id !== produtoId))
   }
 
   const calcularTotal = () => {
-    return carrinho.reduce((total, item) => total + item.produto.precoNumerico * item.quantidade, 0)
+    return carrinho.reduce((total, item) => total + item.produto.price * item.quantidade, 0)
   }
 
   const calcularQuantidadeTotal = () => {
     return carrinho.reduce((total, item) => total + item.quantidade, 0)
   }
 
-  const finalizarCompra = () => {
-    setCompraConcluida(true)
-
-    // Criar pedido
-    const novoPedido: Pedido = {
-      id: `PED-${Date.now().toString().slice(-3)}`,
-      data: new Date().toISOString().split("T")[0],
-      status: "preparando",
-      total: calcularTotal(),
-      itens: carrinho.map((item) => ({
-        id: item.produto.id,
-        nome: item.produto.nome,
-        preco: item.produto.preco,
-        quantidade: item.quantidade,
-        imagem: item.produto.imagem,
-      })),
-      endereco: "Rua das Flores, 123 - Centro",
-      previsaoEntrega: "Previsão: 30-45 minutos",
+  const finalizarCompra = async () => {
+    if (!currentUser || !isAuthenticated()) {
+      alert("Você precisa estar logado para finalizar a compra.");
+      return;
     }
-
-    setTimeout(() => {
-      setPedidoAtual(novoPedido)
-      setCarrinho([])
-      setCarrinhoAberto(false)
-      setCompraConcluida(false)
-      setMostrarPedidos(true)
-    }, 2000)
-  }
+    if (carrinho.length === 0) {
+      alert("Seu carrinho está vazio!");
+      return;
+    }
+    setCompraConcluida(true);
+    try {
+      const token = localStorage.getItem('jwtToken');
+      if (!token) {
+        throw new Error("Token de autenticação não encontrado. Faça login novamente.");
+      }
+      const newPedido = await createPedido(token, {
+        customerName: currentUser.username,
+        customerEmail: currentUser.email,
+        customerPhone: currentUser.phone,
+        deliveryAddress: currentUser.address || "Endereço não informado",
+        total: parseFloat(calcularTotal().toFixed(2)),
+        items: carrinho.map(item => ({
+          productId: item.produto.id,
+          quantity: item.quantidade,
+          priceAtOrder: item.produto.price,
+        })),
+        status: "preparando",
+      });
+      const mappedPedido: Pedido = {
+        id: newPedido.id,
+        orderDate: newPedido.orderDate.split('T')[0], // Mapeado de orderDate
+        status: newPedido.status,
+        total: newPedido.total,
+        items: carrinho.map(item => ({ // Mapeado para 'items'
+          productId: item.produto.id,
+          name: item.produto.name,
+          price: item.produto.price,
+          quantity: item.quantidade,
+          imageUrl: item.produto.imageUrl
+        })),
+        customerName: newPedido.customerName, // Adicionado customerName
+        customerEmail: newPedido.customerEmail, // Adicionado customerEmail
+        customerPhone: newPedido.customerPhone, // Adicionado customerPhone
+        deliveryAddress: newPedido.deliveryAddress, // Mapeado de deliveryAddress
+        previsaoEntrega: "Previsão: 30-45 minutos",
+      };
+      setPedidoAtual(mappedPedido);
+      setCarrinho([]);
+      setCarrinhoAberto(false);
+      setMostrarPedidos(true);
+    } catch (err: any) {
+      setError(err.message || "Erro ao finalizar a compra.");
+      console.error("Erro ao finalizar a compra:", err);
+      alert(`Erro ao finalizar a compra: ${err.message || 'Verifique o console para mais detalhes.'}`);
+    } finally {
+      setCompraConcluida(false);
+    }
+  };
 
   const voltarParaLoja = () => {
     setMostrarPedidos(false)
     setPedidoAtual(null)
+    fetchProdutos();
   }
 
   const limparBusca = () => {
     setTermoBusca("")
   }
 
-  // Se estiver mostrando pedidos, renderizar a página de pedidos
   if (mostrarPedidos) {
-    return <PedidosPage pedidoAtual={pedidoAtual} onVoltarLoja={voltarParaLoja} />
+    // PedidosPage espera 'initialPedido' e 'onVoltarLoja'
+    return <PedidosPage initialPedido={pedidoAtual} onVoltarLoja={voltarParaLoja} />
   }
 
   const ProductCard = ({ produto }: { produto: Produto }) => {
     const foiAdicionado = itensAdicionados.includes(produto.id)
     const itemNoCarrinho = carrinho.find((item) => item.produto.id === produto.id)
-
+    const isOutOfStock = produto.stock <= 0;
     return (
       <div className="bg-white rounded-lg p-4 hover:shadow-md transition-shadow duration-200 border border-gray-100">
         <div className="bg-gray-50 rounded-lg p-4 mb-3 flex items-center justify-center h-20">
           <img
-            src={produto.imagem || "https://via.placeholder.com/80"}
-            alt={produto.nome}
+            src={produto.imageUrl || "https://via.placeholder.com/80"}
+            alt={produto.name}
             className="w-16 h-16 object-contain"
           />
         </div>
         <div className="text-center">
-          <p className="font-semibold text-gray-800 text-sm mb-1">{produto.preco}</p>
-          <p className="text-gray-600 text-xs">{produto.nome}</p>
-          <p className="text-[#fa6924] text-xs mt-1">{produto.categoria}</p>
+          <p className="font-semibold text-gray-800 text-sm mb-1">R$ {produto.price.toFixed(2).replace(".", ",")}</p>
+          <p className="text-gray-600 text-xs">{produto.name}</p>
+          <p className="text-[#fa6924] text-xs mt-1">{produto.category}</p>
         </div>
         <Button
           size="sm"
@@ -300,8 +273,9 @@ export default function ProdutosPage() {
               ? "bg-green-500 text-white border-green-500 hover:bg-green-600"
               : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
           }`}
+          disabled={isOutOfStock}
         >
-          {foiAdicionado ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+          {isOutOfStock ? "Esgotado" : (foiAdicionado ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />)}
         </Button>
         {itemNoCarrinho && (
           <p className="text-xs text-center text-[#fa6924] mt-1 font-medium">{itemNoCarrinho.quantidade} no carrinho</p>
@@ -310,9 +284,16 @@ export default function ProdutosPage() {
     )
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans flex items-center justify-center">
+        <p className="text-gray-600">Carregando produtos...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-between items-center h-16">
@@ -346,21 +327,19 @@ export default function ProdutosPage() {
                   </span>
                 )}
               </button>
-              <Link href="/" className="text-gray-600 hover:text-gray-800 text-sm">
+              <Button onClick={logout} className="text-gray-600 hover:text-gray-800 text-sm" variant="ghost">
                 Sair
-              </Link>
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Cart Sidebar */}
       {carrinhoAberto && (
         <div className="fixed inset-0 z-50 overflow-hidden">
           <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setCarrinhoAberto(false)} />
           <div className="absolute right-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 ease-in-out">
             <div className="flex flex-col h-full">
-              {/* Header do Carrinho */}
               <div className="flex items-center justify-between p-4 border-b">
                 <h2 className="text-lg font-semibold text-gray-800">Seu Carrinho</h2>
                 <button
@@ -370,8 +349,6 @@ export default function ProdutosPage() {
                   <X className="h-5 w-5" />
                 </button>
               </div>
-
-              {/* Itens do Carrinho */}
               <div className="flex-1 overflow-y-auto p-4">
                 {carrinho.length === 0 ? (
                   <div className="text-center py-8">
@@ -383,13 +360,13 @@ export default function ProdutosPage() {
                     {carrinho.map((item) => (
                       <div key={item.produto.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                         <img
-                          src={item.produto.imagem || "https://via.placeholder.com/80"}
-                          alt={item.produto.nome}
+                          src={item.produto.imageUrl || "https://via.placeholder.com/80"}
+                          alt={item.produto.name}
                           className="w-12 h-12 object-contain bg-white rounded p-1"
                         />
                         <div className="flex-1">
-                          <h3 className="font-medium text-sm text-gray-800">{item.produto.nome}</h3>
-                          <p className="text-sm text-[#fa6924] font-semibold">{item.produto.preco}</p>
+                          <h3 className="font-medium text-sm text-gray-800">{item.produto.name}</h3>
+                          <p className="text-sm text-[#fa6924] font-semibold">R$ {item.produto.price.toFixed(2).replace(".", ",")}</p>
                         </div>
                         <div className="flex items-center space-x-2">
                           <button
@@ -417,8 +394,6 @@ export default function ProdutosPage() {
                   </div>
                 )}
               </div>
-
-              {/* Footer do Carrinho */}
               {carrinho.length > 0 && (
                 <div className="border-t p-4 space-y-4">
                   <div className="flex justify-between items-center">
@@ -442,7 +417,6 @@ export default function ProdutosPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Logo and Location */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center space-x-2 mb-1">
@@ -455,8 +429,6 @@ export default function ProdutosPage() {
             </Link>
           </div>
         </div>
-
-        {/* Search Bar */}
         <div className="relative mb-6">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
@@ -474,17 +446,18 @@ export default function ProdutosPage() {
             </button>
           )}
         </div>
-
         <div className="flex gap-6">
-          {/* Sidebar */}
           <aside className="w-48 flex-shrink-0">
             <nav className="space-y-2">
               {categorias.map((categoria, index) => (
                 <Link
                   key={index}
                   href="#"
+                  onClick={() => setTermoBusca(categoria === "Toda a Loja" ? "" : categoria)}
                   className={`block px-4 py-2 text-sm rounded-lg transition-colors ${
-                    categoria === "Frutas" ? "bg-gray-100 text-gray-800 font-medium" : "text-gray-600 hover:bg-gray-50"
+                    termoBusca === categoria || (termoBusca === "" && categoria === "Toda a Loja")
+                      ? "bg-gray-100 text-gray-800 font-medium"
+                      : "text-gray-600 hover:bg-gray-50"
                   }`}
                 >
                   {categoria}
@@ -492,11 +465,8 @@ export default function ProdutosPage() {
               ))}
             </nav>
           </aside>
-
-          {/* Main Content */}
           <main className="flex-1">
             {termoBusca ? (
-              /* Resultados da Busca */
               <section className="mb-8">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-gray-800">
@@ -522,52 +492,28 @@ export default function ProdutosPage() {
                 )}
               </section>
             ) : (
-              /* Exibição Normal por Categorias */
               <>
-                {/* Frutas Section */}
-                <section className="mb-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-800">Frutas</h2>
-                    <Link href="#" className="text-sm text-[#fa6924] hover:underline">
-                      Ver mais
-                    </Link>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                    {frutas.map((produto) => (
-                      <ProductCard key={produto.id} produto={produto} />
-                    ))}
-                  </div>
-                </section>
-
-                {/* Legumes Section */}
-                <section className="mb-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-800">Legumes</h2>
-                    <Link href="#" className="text-sm text-[#fa6924] hover:underline">
-                      Ver mais
-                    </Link>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                    {legumes.map((produto) => (
-                      <ProductCard key={produto.id} produto={produto} />
-                    ))}
-                  </div>
-                </section>
-
-                {/* Vegetais Section */}
-                <section className="mb-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-800">Vegetais</h2>
-                    <Link href="#" className="text-sm text-[#fa6924] hover:underline">
-                      Ver mais
-                    </Link>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                    {vegetais.map((produto) => (
-                      <ProductCard key={produto.id} produto={produto} />
-                    ))}
-                  </div>
-                </section>
+                {categorias.slice(1).map((category, index) => {
+                  const categoryProducts = produtosDisponiveis.filter(
+                    (p) => p.category === category && p.status === 'active'
+                  );
+                  if (categoryProducts.length === 0) return null;
+                  return (
+                    <section key={index} className="mb-8">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-800">{category}</h2>
+                        <Link href="#" className="text-sm text-[#fa6924] hover:underline" onClick={() => setTermoBusca(category)}>
+                          Ver mais
+                        </Link>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        {categoryProducts.map((produto) => (
+                          <ProductCard key={produto.id} produto={produto} />
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })}
               </>
             )}
           </main>
