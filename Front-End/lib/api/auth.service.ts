@@ -19,7 +19,7 @@ export const login = async (username: string, password: string): Promise<LoginRe
   const response = await api.post('/auth/login', { username, password });
   if (response.data.accessToken) {
     localStorage.setItem('jwtToken', response.data.accessToken);
-    localStorage.setItem('userProfile', JSON.stringify(response.data.user)); // Store user profile
+    localStorage.setItem('userProfile', JSON.stringify(response.data.user));
   }
   return response.data;
 };
@@ -29,8 +29,7 @@ export const register = async (userData: any): Promise<RegisterResponse> => {
   return response.data;
 };
 
-export const getProfile = async (token: string): Promise<any> => {
-  // The interceptor already adds the token, so we just need to make the call
+export const getProfile = async (): Promise<any> => {
   const response = await api.get('/auth/profile');
   return response.data;
 };
@@ -38,7 +37,7 @@ export const getProfile = async (token: string): Promise<any> => {
 export const logout = () => {
   localStorage.removeItem('jwtToken');
   localStorage.removeItem('userProfile');
-  window.location.href = '/'; // Redirect to login page after logout
+  window.location.href = '/';
 };
 
 export const isAuthenticated = (): boolean => {

@@ -16,7 +16,7 @@ interface CreatePedidoDTO {
 
 interface PedidoResponse {
   id: string;
-  orderDate: string; // ISO string
+  orderDate: string;
   status: "preparando" | "saiu_entrega" | "entregue";
   total: number;
   customerName: string;
@@ -27,10 +27,8 @@ interface PedidoResponse {
     productId: string;
     quantity: number;
     priceAtOrder: number;
-    // Backend might return more fields like productName, productImageUrl
   }>;
 }
-
 
 export const getAllPedidos = async (token: string): Promise<PedidoResponse[]> => {
   const response = await api.get('/orders', {
